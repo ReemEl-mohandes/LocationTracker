@@ -21,7 +21,8 @@ docker compose up -d --build
 The API is reachable at **https://localhost**. The certificate is self-signed, so pass
 `-k` to curl or trust it explicitly. Plain HTTP on port 80 redirects to HTTPS.
 
-Swagger is served at `/swagger` in Development only (`ASPNETCORE_ENVIRONMENT=Development`).
+Swagger is served at `/swagger` in Development, or in any environment when `SWAGGER_ENABLED=true`
+in `.env`. Log in via `/api/auth/login` first; the UI then sends the CSRF header automatically.
 
 ### Required configuration
 
@@ -193,6 +194,69 @@ curl -k -b jar.txt -c jar.txt -X POST https://localhost/api/locations \
 # Current trip, if one is open
 curl -k -b jar.txt https://localhost/api/trips/me/active
 ```
+
+---
+
+## Admin live map
+
+**https://localhost/admin/** (or `https://<this PC's IP>/admin/` from another device). Sign in
+with the seeded administrator from `.env`. The page shows every user's latest position,
+refreshed every 5 seconds: green means on a trip, blue means seen in the last 5 minutes, and
+grey means older than that. Click a user to see their last 500 points and their trips. Click a
+trip to draw its path.
+
+The page is static content in `wwwroot/admin/`, served by the API itself. It is same-origin,
+so it uses the normal cookie session, and every piece of data it shows comes from
+`/api/admin/*`. Leaflet is bundled under `vendor/`. Only the map tiles come from
+OpenStreetMap.
+
+---
+
+## iOS client
+
+`ios/` is a SwiftUI app (iOS 17+) that signs a user in, records GPS in the foreground and
+background, and uploads to `/api/locations/batch`. Trips are then detected by the server as
+usual. It is an [xtool](https://github.com/xtool-org/xtool) SwiftPM project, so it builds on
+Linux or WSL without a Mac.
+
+1. Check `ios/Sources/LocationTrackerClient/AppConfig.swift`:
+   - `defaultServerURL` is this PC's LAN address as the phone sees it (`ipconfig`). It can
+     also be edited on the sign-in screen.
+   - `pinnedCertificateSHA256` must match the current certificate:
+     `openssl x509 -in nginx/certs/server.crt -noout -fingerprint -sha256`. Update it every
+     time `generate-certs.sh` is re-run.
+2. Build from WSL:
+   ```bash
+   cd /mnt/c/dev/LocationTracker/ios && ./package.sh
+   ```
+   This runs `xtool dev build` and wraps the result into an unsigned
+   `LocationTrackerClient.ipa` on the Windows Desktop. `mkipa.py` stands in for
+   `xtool dev build --ipa`, which needs `zip`, and a stock WSL Ubuntu doesn't have it.
+3. Sideload the `.ipa` with your usual signing tool, then run it on an iPhone on the same
+   network as the PC. Sign in, turn on **Share my location**, and choose **Always** when iOS
+   asks, so tracking keeps going in the background.
+
+Settings that were Xcode build settings live in `xtool.yml` (the bundle ID) and `Info.plist`
+(background location, permission prompts, ATS). xtool merges `Info.plist` into the plist it
+generates.
+
+How it talks to the server:
+
+- **Auth.** The login cookies are copied into the Keychain. API calls send the access token
+  as `Authorization: Bearer`, which the server already accepts. A bearer request carries no
+  cookies, so the CSRF check does not apply to it. On a 401 the app refreshes once (the
+  refresh cookie plus the `X-CSRF-Token` header) and retries. Refreshes are single-flight,
+  because refresh tokens rotate and a reused one revokes the whole session.
+- **TLS.** The self-signed certificate names only `localhost`, but the phone connects by IP.
+  Rather than turn validation off, the app accepts exactly one certificate: the one whose
+  SHA-256 fingerprint is pinned. A publicly trusted certificate passes normal validation
+  and never reaches the pin check.
+- **Uploads.** Fixes are queued on disk and sent every 10 seconds in batches of up to 500.
+  That is a few requests a minute, well inside the per-user write limit. The queue survives
+  going offline and app restarts. Fixes worse than 150 m accuracy are dropped on the device.
+- **Background.** The app uses the `location` background mode, with automatic pausing off so
+  the server still sees the stop that ends a trip. It also uses significant-change
+  monitoring, so iOS relaunches the app after it has been terminated.
 
 ---
 

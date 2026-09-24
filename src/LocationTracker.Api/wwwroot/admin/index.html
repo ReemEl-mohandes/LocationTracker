@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- nginx sends Referrer-Policy: no-referrer for the API. OpenStreetMap's tile servers
+       reject tile requests that carry no Referer, so this page relaxes it for itself. -->
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Location Tracker Admin</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <section id="login-view" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <h1>Location Tracker</h1>
+      <p class="muted">Administrator sign-in</p>
+      <label>Email <input id="login-email" type="email" autocomplete="username" required></label>
+      <label>Password <input id="login-password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" id="login-submit">Sign in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="app-view" class="app" hidden>
+    <header class="topbar">
+      <strong>Location Tracker Admin</strong>
+      <span id="poll-status" class="muted"></span>
+      <span class="spacer"></span>
+      <span id="admin-name" class="muted"></span>
+      <button id="logout" class="link">Sign out</button>
+    </header>
+
+    <aside class="sidebar">
+      <input id="search" type="search" placeholder="Filter users">
+      <ul id="user-list" class="user-list"></ul>
+
+      <div id="detail" class="detail" hidden>
+        <div class="detail-head">
+          <h2 id="detail-name"></h2>
+          <button id="detail-close" class="link">Close</button>
+        </div>
+        <p id="detail-meta" class="muted"></p>
+        <label class="inline"><input id="show-trail" type="checkbox" checked> Show last 500 points</label>
+        <h3>Trips</h3>
+        <ul id="trip-list" class="trip-list"></ul>
+      </div>
+    </aside>
+
+    <main id="map" class="map"></main>
+  </section>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

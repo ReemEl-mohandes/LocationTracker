@@ -191,15 +191,28 @@ app.UseForwardedHeaders();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
+// Swagger is on in Development and opt-in elsewhere via Swagger:Enabled, so exposing the API
+// surface is a deliberate deployment choice rather than a side effect of the environment name.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+        // The UI runs same-origin, so it can read the non-HttpOnly csrf_token cookie and echo it
+        // as the double-submit header. Without this every "Try it out" POST fails with 403.
+        options.UseRequestInterceptor(
+            "(req) => { const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/); " +
+            "if (m) req.headers['X-CSRF-Token'] = decodeURIComponent(m[1]); return req; }"));
 }
-else
+
+if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
 }
+
+// The admin live map at /admin/. The page itself is public static content; every byte of
+// data it shows comes from /api/admin/*, which is locked to the Admin role.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.UseSerilogRequestLogging();
 

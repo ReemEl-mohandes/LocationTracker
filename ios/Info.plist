@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged by xtool into the Info.plist it generates (see infoPath in xtool.yml). -->
+	<key>CFBundleDisplayName</key>
+	<string>Location Tracker</string>
+	<!-- Without a launch screen entry iOS runs the app letterboxed at a legacy size. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is sent to your Location Tracker server so your trips can be recorded.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allow "Always" so your trips keep being recorded while the app is in the background.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>The Location Tracker server runs on a computer on your local network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- The development server is addressed by LAN IP with a self-signed certificate,
+		     which the app pins by fingerprint (see the URLSessionDelegate in APIClient.swift). -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

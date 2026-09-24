@@ -1,0 +1,4 @@
+version: 1
+bundleID: com.example.LocationTrackerClient
+# Merged into the generated Info.plist: background location, permission prompts, ATS.
+infoPath: Info.plist
