@@ -33,6 +33,7 @@ services:
       SeedAdmin__Email: ${SEED_ADMIN_EMAIL}
       SeedAdmin__Password: ${SEED_ADMIN_PASSWORD}
       Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://localhost}
+      Swagger__Enabled: ${SWAGGER_ENABLED:-false}
     depends_on:
       db:
         # Waits for the database to accept connections, not merely for the container to

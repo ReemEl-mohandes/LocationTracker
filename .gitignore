@@ -488,3 +488,8 @@ $RECYCLE.BIN/
 nginx/certs/*.crt
 nginx/certs/*.key
 nginx/certs/*.pfx
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate

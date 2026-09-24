@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged by xtool into the Info.plist it generates (see infoPath in xtool.yml). -->
+	<key>CFBundleDisplayName</key>
+	<string>Location Tracker</string>
+	<!-- Without a launch screen entry iOS runs the app letterboxed at a legacy size. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is sent to your Location Tracker server so your trips can be recorded.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allow "Always" so your trips keep being recorded while the app is in the background.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>The Location Tracker server runs on a computer on your local network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- The servers are reached by bare IP (LAN and the AWS Elastic IP) with self-signed
+		     certificates. ATS exception domains cannot name an IP address, and ATS rejects a
+		     self-signed certificate before the app's own check runs, so ATS is relaxed here.
+		     This does not make the app accept any certificate: APIClient refuses plain http
+		     and accepts only the certificate fingerprints pinned in AppConfig.
+
+		     No NSAllowsLocalNetworking alongside it: when that key is present, iOS ignores
+		     NSAllowsArbitraryLoads entirely. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>
