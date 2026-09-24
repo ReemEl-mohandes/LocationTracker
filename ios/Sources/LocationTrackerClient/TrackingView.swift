@@ -29,6 +29,7 @@ struct TrackingView: View {
                 await queue.flush()
                 await loadTrips()
             }
+            .onAppear { tracker.autoStart() }
             .task {
                 // Refresh the trip list while this screen is visible. The task is cancelled
                 // automatically when the view goes away.
@@ -46,7 +47,7 @@ struct TrackingView: View {
         Section {
             Toggle(isOn: Binding(
                 get: { tracker.isTracking },
-                set: { $0 ? tracker.start() : tracker.stop() }
+                set: { $0 ? tracker.start() : tracker.pauseByUser() }
             )) {
                 Label("Share my location", systemImage: tracker.isTracking ? "location.fill" : "location.slash")
             }

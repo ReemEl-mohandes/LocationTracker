@@ -197,6 +197,39 @@ curl -k -b jar.txt https://localhost/api/trips/me/active
 
 ---
 
+## Deploying to AWS EC2
+
+The public deployment is one Ubuntu 24.04 `t3.micro` (`reem-server`, us-east-1) running the
+same Docker Compose stack, behind an Elastic IP (`34.199.20.93`). Its security group
+(`reem-sg`) allows SSH only from the owner's IP, plus HTTP and HTTPS from anywhere.
+
+First-time setup on a fresh instance, after copying the repo to it:
+
+```bash
+PUBLIC_IP=<elastic ip> ./deploy/ec2-setup.sh   # Docker, swap, new .env secrets, certificate
+sudo docker compose up -d --build
+```
+
+`ec2-setup.sh` generates its own secrets and admin password. It never reuses the local
+`.env`, and it prints the admin credentials once. Swagger stays off (`SWAGGER_ENABLED=false`).
+The certificate names the public IP, and its fingerprint must be listed in the iOS app's
+`AppConfig.pinnedCertificateSHA256`.
+
+Redeploying code from this machine (the server's `.env` and certificates are left alone):
+
+```bash
+git ls-files -co --exclude-standard | grep -v '^ios/' | tar -czf - -T - \
+  | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'tar -xzf - -C ~/LocationTracker'
+ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'cd ~/LocationTracker && sudo docker compose up -d --build'
+```
+
+A t3.micro in standard credit mode is capped at about 10% CPU until it has earned credits,
+which makes the .NET build crawl. Switch it to `unlimited` for the build and back to
+`standard` afterwards (`aws ec2 modify-instance-credit-specification`). If your home IP
+changes, update the SSH rule in `reem-sg`.
+
+---
+
 ## Admin live map
 
 **https://localhost/admin/** (or `https://<this PC's IP>/admin/` from another device). Sign in

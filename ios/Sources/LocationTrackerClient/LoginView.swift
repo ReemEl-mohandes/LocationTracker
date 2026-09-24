@@ -15,14 +15,14 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("https://192.168.1.8", text: $serverURL)
+                    TextField("https://34.199.20.93", text: $serverURL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("The address of the computer running the server, on the same network as this phone.")
+                    Text("Use https://34.199.20.93 for the AWS server, or your PC's LAN address for the local one.")
                 }
 
                 Section("Account") {
@@ -101,8 +101,12 @@ struct LoginView: View {
             }
             password = ""
         } catch let error as URLError where error.code == .cancelled || error.code == .serverCertificateUntrusted
-            || error.code == .secureConnectionFailed {
-            errorMessage = "Could not establish a trusted connection. Check the server address and the pinned certificate fingerprint in AppConfig.swift."
+            || error.code == .secureConnectionFailed || error.code == .serverCertificateHasUnknownRoot {
+            if let seen = APIClient.shared.rejectedFingerprint {
+                errorMessage = "The server's certificate is not one this app trusts. It presented:\n\(seen)\nAdd it to pinnedCertificateSHA256 in AppConfig.swift if this is your server."
+            } else {
+                errorMessage = "iOS refused the secure connection before the certificate could be checked (error \(error.code.rawValue)). Check the server address."
+            }
         } catch let error as URLError {
             errorMessage = "Cannot reach the server: \(error.localizedDescription)"
         } catch {

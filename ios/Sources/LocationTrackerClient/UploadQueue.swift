@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Points waiting to be sent, persisted to disk so a dead zone, a server outage or the app
 /// being killed does not lose them. They are sent oldest first, in batches, and removed only
@@ -53,7 +54,13 @@ final class UploadQueue: ObservableObject {
         if let notBefore, notBefore > Date() { return }
 
         isFlushing = true
-        defer { isFlushing = false }
+        // In the background iOS may suspend the app mid-request; asking for a little extra
+        // time lets the batch in flight finish and be removed from the queue.
+        let backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "upload-locations")
+        defer {
+            isFlushing = false
+            if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask) }
+        }
 
         while !pending.isEmpty {
             // Points only ever get appended while a batch is in flight, so the prefix sent is

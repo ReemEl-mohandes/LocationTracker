@@ -16,13 +16,16 @@ if [[ -f "$CERT_DIR/server.crt" ]]; then
   exit 0
 fi
 
+# CERT_EXTRA_SAN adds names for a server reached from elsewhere, e.g. CERT_EXTRA_SAN=IP:3.120.4.5
 # A SAN is mandatory: browsers and curl have ignored the legacy CN field for host
-# matching for years, so a CN-only certificate fails verification outright.
+# matching for years, so a CN-only certificate fails verification outright. iOS also
+# requires the serverAuth extended key usage on TLS server certificates.
 openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
   -keyout "$CERT_DIR/server.key" \
   -out    "$CERT_DIR/server.crt" \
   -subj   "/C=EG/ST=Cairo/L=Cairo/O=LocationTracker/CN=localhost" \
-  -addext "subjectAltName=DNS:localhost,DNS:api,IP:127.0.0.1"
+  -addext "extendedKeyUsage=serverAuth" \
+  -addext "subjectAltName=DNS:localhost,DNS:api,IP:127.0.0.1${CERT_EXTRA_SAN:+,$CERT_EXTRA_SAN}"
 
 chmod 600 "$CERT_DIR/server.key"
 

@@ -42,6 +42,22 @@ final class APIClient: NSObject, @unchecked Sendable {
     private var session: URLSession!
     private let refresher = SingleFlight()
 
+    private let diagnosticsLock = NSLock()
+    private var _rejectedFingerprint: String?
+
+    /// Fingerprint of the most recent self-signed certificate that matched no pin, so the
+    /// sign-in screen can show what the server actually presented. nil when no certificate
+    /// was rejected by the pin check (for example, iOS refused the connection before it).
+    var rejectedFingerprint: String? {
+        diagnosticsLock.lock(); defer { diagnosticsLock.unlock() }
+        return _rejectedFingerprint
+    }
+
+    private func recordRejected(_ fingerprint: String?) {
+        diagnosticsLock.lock(); defer { diagnosticsLock.unlock() }
+        _rejectedFingerprint = fingerprint
+    }
+
     private override init() {
         super.init()
         let config = URLSessionConfiguration.default
@@ -224,10 +240,9 @@ final class APIClient: NSObject, @unchecked Sendable {
 // MARK: - TLS
 
 extension APIClient: URLSessionDelegate {
-    /// The development server uses a self-signed certificate that names only "localhost",
-    /// while the phone reaches it by LAN IP, so ordinary validation fails on both counts.
-    /// Instead of disabling validation, accept exactly one certificate: the one whose
-    /// SHA-256 fingerprint is pinned in AppConfig. Anything else is refused.
+    /// The servers use self-signed certificates, so ordinary validation fails. Instead of
+    /// disabling validation, accept only certificates whose SHA-256 fingerprint is pinned in
+    /// AppConfig, one per deployment. Anything else is refused.
     func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge) async
         -> (URLSession.AuthChallengeDisposition, URLCredential?) {
@@ -249,9 +264,11 @@ extension APIClient: URLSessionDelegate {
             .map { String(format: "%02X", $0) }
             .joined(separator: ":")
 
-        guard fingerprint == AppConfig.pinnedCertificateSHA256.uppercased() else {
+        guard AppConfig.pinnedCertificateSHA256.contains(where: { $0.uppercased() == fingerprint }) else {
+            recordRejected(fingerprint)
             return (.cancelAuthenticationChallenge, nil)
         }
+        recordRejected(nil)
         return (.useCredential, URLCredential(trust: trust))
     }
 }
