@@ -8,6 +8,18 @@
 	<!-- Without a launch screen entry iOS runs the app letterboxed at a legacy size. -->
 	<key>UILaunchScreen</key>
 	<dict/>
+	<!-- xtool copies Resources/AppIcon.png into the bundle (iconPath in xtool.yml) and sets
+	     the legacy CFBundleIconFile. This names it for the modern lookup too. -->
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconFiles</key>
+			<array>
+				<string>AppIcon</string>
+			</array>
+		</dict>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -15,11 +27,20 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<!-- Apple documents apps with this mode as "relaunched in the background immediately
+		     after system boot" (a legacy VoIP behaviour; see github.com/timothyekl/BootLaunch).
+		     It is here only for that relaunch: the app registers for no VoIP pushes, so iOS
+		     has nothing to penalise. App Store review would reject it for a non-calling app;
+		     this build is sideloaded. Whether current iOS still honours the boot relaunch is
+		     to be confirmed on the device. -->
+		<string>voip</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is sent to your Location Tracker server so your trips can be recorded.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Allow "Always" so your trips keep being recorded while the app is in the background.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Motion detection tells the app when you start driving or walking, so it can switch GPS on only when it is needed and record your trips accurately.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>The Location Tracker server runs on a computer on your local network.</string>
 	<key>NSAppTransportSecurity</key>

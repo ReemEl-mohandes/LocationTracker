@@ -48,6 +48,33 @@ enum TokenStore {
         }
     }
 
+    /// Whether the phone has been unlocked since it booted. Until then iOS keeps every
+    /// "after first unlock" item (the Keychain, UserDefaults, protected files) out of reach,
+    /// even from an app it relaunched itself for a location event. A dedicated probe item
+    /// tells "locked away" apart from "not there".
+    static var isUnlockedSinceBoot: Bool {
+        switch SecItemCopyMatching(probe as CFDictionary, nil) {
+        case errSecInteractionNotAllowed:
+            return false
+        case errSecItemNotFound:
+            // First run: create it. Writing only succeeds when unlocked, which reaching this
+            // branch implies.
+            var add = probe
+            add[kSecValueData as String] = Data("1".utf8)
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(add as CFDictionary, nil)
+            return true
+        default:
+            return true
+        }
+    }
+
+    private static let probe: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "LocationTrackerClient.unlock-probe",
+        kSecAttrAccount as String: "probe",
+    ]
+
     static func clear() {
         lock.lock(); defer { lock.unlock() }
         SecItemDelete(base as CFDictionary)

@@ -493,3 +493,7 @@ nginx/certs/*.pfx
 xcuserdata/
 DerivedData/
 *.xcuserstate
+
+# Postman workspace files (local tooling)
+postman/
+.postman/

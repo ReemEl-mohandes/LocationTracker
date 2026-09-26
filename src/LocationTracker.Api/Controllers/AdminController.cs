@@ -24,12 +24,15 @@ public class AdminController : ControllerBase
     private readonly ILocationService _locations;
     private readonly AppDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ITripFinalizer _finalizer;
 
-    public AdminController(ILocationService locations, AppDbContext db, UserManager<ApplicationUser> userManager)
+    public AdminController(ILocationService locations, AppDbContext db, UserManager<ApplicationUser> userManager,
+        ITripFinalizer finalizer)
     {
         _locations = locations;
         _db = db;
         _userManager = userManager;
+        _finalizer = finalizer;
     }
 
     [HttpGet("users")]
@@ -94,6 +97,25 @@ public class AdminController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<UserLatestLocationResponse>>> LatestForAll(CancellationToken ct)
         => Ok(await _locations.GetLatestForAllUsersAsync(ct));
 
+    /// <summary>
+    /// Re-runs the smoothed distance and speed calculation over existing trips, and drops any
+    /// that turn out to be noise. For trips recorded before the current smoothing settings;
+    /// where trips start and end is not re-detected.
+    /// </summary>
+    [HttpPost("trips/recalculate")]
+    public async Task<ActionResult<RecalculateTripsResponse>> RecalculateTrips([FromQuery] Guid? userId, CancellationToken ct)
+    {
+        var query = _db.Trips.AsQueryable();
+        if (userId is not null) query = query.Where(t => t.UserId == userId);
+        var trips = await query.OrderBy(t => t.Id).ToListAsync(ct);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        var discarded = await _finalizer.FinalizeAsync(trips, ct);
+        await transaction.CommitAsync(ct);
+
+        return Ok(new RecalculateTripsResponse(trips.Count, discarded));
+    }
+
     /// <summary>Clears a lockout early, for when a legitimate user locks themselves out.</summary>
     [HttpPost("users/{id:guid}/unlock")]
     public async Task<IActionResult> Unlock(Guid id)
@@ -107,6 +129,8 @@ public class AdminController : ControllerBase
         return NoContent();
     }
 }
+
+public record RecalculateTripsResponse(int Recalculated, int Discarded);
 
 public record AdminUserResponse(
     Guid Id,

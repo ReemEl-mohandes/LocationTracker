@@ -151,6 +151,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITripDetector, TripDetector>();
+builder.Services.AddScoped<ITripFinalizer, TripFinalizer>();
 builder.Services.AddScoped<ILocationService, LocationService>();
 builder.Services.AddSingleton<ICookieWriter, CookieWriter>();
 builder.Services.AddHostedService<StaleTripSweeper>();

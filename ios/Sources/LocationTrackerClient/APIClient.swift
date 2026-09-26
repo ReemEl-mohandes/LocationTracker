@@ -120,6 +120,11 @@ final class APIClient: NSObject, @unchecked Sendable {
         return try JSON.decoder.decode(PagedResult<Trip>.self, from: data).items
     }
 
+    func myTrip(id: Int64) async throws -> Trip {
+        let data = try await authorized("GET", "/api/trips/me/\(id)")
+        return try JSON.decoder.decode(TripDetail.self, from: data).trip
+    }
+
     func myActiveTrip() async throws -> Trip? {
         let data = try await authorized("GET", "/api/trips/me/active")
         return data.isEmpty ? nil : try JSON.decoder.decode(Trip.self, from: data)

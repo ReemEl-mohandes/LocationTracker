@@ -13,14 +13,18 @@ final class SessionStore: ObservableObject {
     private static let profileKey = "cachedProfile"
     private var expiryObserver: NSObjectProtocol?
 
-    /// Runs when the session ends for any reason, so tracking stops and the queue is emptied.
-    var onSignedOut: (() -> Void)?
+    /// Runs when the session ends. `explicit` is true for a sign-out the user chose, false when
+    /// the server ended the session; only the first should discard the offline backlog.
+    var onSignedOut: ((_ explicit: Bool) -> Void)?
+
+    /// Runs whenever a user is signed in, including on restore at launch.
+    var onSignedIn: ((UserProfile) -> Void)?
 
     init() {
         expiryObserver = NotificationCenter.default.addObserver(
             forName: .sessionExpired, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.endSession() }
+            Task { @MainActor in self?.endSession(explicit: false) }
         }
     }
 
@@ -38,11 +42,12 @@ final class SessionStore: ObservableObject {
             let profile = try await APIClient.shared.me()
             signedIn(profile)
         } catch APIError.unauthorized {
-            endSession()
+            endSession(explicit: false)
         } catch {
             // Offline at launch: keep the session and keep tracking. Points queue up and the
             // token is refreshed once the server is reachable again.
             if let cached = Self.cachedProfile {
+                onSignedIn?(cached)
                 state = .signedIn(cached)
             } else {
                 state = .signedOut
@@ -62,19 +67,20 @@ final class SessionStore: ObservableObject {
 
     func logout() async {
         await APIClient.shared.logout()
-        endSession()
+        endSession(explicit: true)
     }
 
     private func signedIn(_ profile: UserProfile) {
         Self.cachedProfile = profile
+        onSignedIn?(profile)
         state = .signedIn(profile)
     }
 
-    private func endSession() {
+    private func endSession(explicit: Bool) {
         guard state != .signedOut else { return }
         TokenStore.clear()
         Self.cachedProfile = nil
-        onSignedOut?()
+        onSignedOut?(explicit)
         state = .signedOut
     }
 

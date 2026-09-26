@@ -7,6 +7,9 @@
 
   const POLL_MS = 5000;
   const DETAIL_EVERY_N_POLLS = 3;
+  // The app checks in at least every 2 minutes, even standing still, so a user is online
+  // until two check-ins are missed (plus upload slack). Measured from when the server
+  // received the last point: that is the last actual contact.
   const RECENT_MS = 5 * 60 * 1000;
 
   const $ = (id) => document.getElementById(id);
@@ -107,10 +110,15 @@
     return node;
   }
 
+  function lastContact(u) {
+    return u.latest ? Date.parse(u.latest.receivedAtUtc) : 0;
+  }
+
+  // Silence wins over an open trip: a phone that vanished mid-journey is offline, even though
+  // the server keeps the trip open until its gap timeout.
   function statusOf(u) {
-    if (u.activeTripId) return 'active';
-    if (u.latest && Date.now() - Date.parse(u.latest.recordedAtUtc) < RECENT_MS) return 'recent';
-    return 'stale';
+    if (!u.latest || Date.now() - lastContact(u) >= RECENT_MS) return 'stale';
+    return u.activeTripId ? 'active' : 'recent';
   }
 
   const COLORS = { active: '#16a34a', recent: '#2f6fed', stale: '#98a2b3' };
@@ -191,10 +199,12 @@
       const name = el('div', { className: 'name' },
         el('span', { className: `dot ${status}` }),
         el('span', { textContent: u.displayName || u.email }));
-      if (u.activeTripId) name.append(el('span', { className: 'badge', textContent: 'on trip' }));
+      if (status === 'active') name.append(el('span', { className: 'badge', textContent: 'on trip' }));
       const sub = el('div', {
         className: 'sub',
-        textContent: u.latest ? `${u.email} · ${ago(u.latest.recordedAtUtc)}` : `${u.email} · no points yet`,
+        textContent: u.latest
+          ? `${status === 'stale' ? 'offline' : 'online'} · last seen ${ago(u.latest.receivedAtUtc)} · ${u.email}`
+          : `${u.email} · no points yet`,
       });
       const li = el('li', {}, name, sub);
       if (u.userId === state.selectedUserId) li.classList.add('selected');
@@ -207,6 +217,7 @@
 
   async function selectUser(userId) {
     state.selectedUserId = userId;
+    $('recalculate-status').textContent = '';
     state.selectedTripId = null;
     clearTrip();
     renderUsers();
@@ -250,6 +261,25 @@
       if (fit && !state.selectedTripId) map.fitBounds(state.trailLayer.getBounds().pad(0.2), { maxZoom: 17 });
     }
     renderTrips(trips.items);
+  }
+
+  async function recalculate() {
+    const id = state.selectedUserId;
+    if (!id) return;
+    const button = $('recalculate');
+    button.disabled = true;
+    $('recalculate-status').textContent = 'Recalculating…';
+    try {
+      const r = await api(`/api/admin/trips/recalculate?userId=${id}`, { method: 'POST' });
+      $('recalculate-status').textContent =
+        `${r.recalculated} trip(s) recalculated` + (r.discarded ? `, ${r.discarded} removed as noise` : '');
+      await loadDetail(false);
+    } catch (e) {
+      if (e instanceof AuthRequired) return showLogin('Your session expired. Please sign in again.');
+      $('recalculate-status').textContent = `Failed: ${e.message}`;
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function renderTrips(trips) {
@@ -383,6 +413,7 @@
     $('logout').addEventListener('click', logout);
     $('search').addEventListener('input', renderUsers);
     $('detail-close').addEventListener('click', closeDetail);
+    $('recalculate').addEventListener('click', recalculate);
     $('show-trail').addEventListener('change', () => { if (!$('show-trail').checked) clearTrail(); loadDetail(true); });
 
     try {
