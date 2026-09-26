@@ -78,27 +78,19 @@ public class StaleTripSweeper : BackgroundService
 
         if (stale.Count == 0) return;
 
-        var discard = new List<Trip>();
+        var finalizer = scope.ServiceProvider.GetRequiredService<ITripFinalizer>();
 
         foreach (var trip in stale)
-            detector.CloseTrip(trip, TripEndReason.Swept, discard);
+            detector.CloseTrip(trip, TripEndReason.Swept);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         await db.SaveChangesAsync(ct);
-
-        foreach (var trip in discard)
-        {
-            await db.Locations
-                .Where(l => l.TripId == trip.Id)
-                .ExecuteUpdateAsync(s => s.SetProperty(l => l.TripId, (long?)null), ct);
-
-            await db.Trips.Where(t => t.Id == trip.Id).ExecuteDeleteAsync(ct);
-        }
+        var discarded = await finalizer.FinalizeAsync(stale, ct);
 
         await transaction.CommitAsync(ct);
 
-        _logger.LogInformation("Swept {Closed} stale trip(s), discarded {Discarded} as too short",
-            stale.Count, discard.Count);
+        _logger.LogInformation("Swept {Closed} stale trip(s), discarded {Discarded} as too short or noise",
+            stale.Count, discarded);
     }
 }

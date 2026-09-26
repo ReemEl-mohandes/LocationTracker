@@ -35,4 +35,32 @@ public class TripDetectionOptions
 
     /// <summary>Upper bound on points accepted in one batch upload.</summary>
     public int MaxBatchSize { get; set; } = 1000;
+
+    /// <summary>
+    /// Fixes vaguer than this are stored but take no part in detection or smoothing. Wi-Fi
+    /// and cell positioning routinely reports 30–100 m; beyond that a fix says little more
+    /// than which neighbourhood the phone is in.
+    /// </summary>
+    public double MaxAccuracyMeters { get; set; } = 100d;
+
+    /// <summary>
+    /// Movement must clear the combined uncertainty of the two averaged positions being
+    /// compared, times this factor. 2 keeps a phone lying still with ±40 m fixes from
+    /// opening trips, while a walk is still detected within about a minute.
+    /// </summary>
+    public double MovementNoiseFactor { get; set; } = 2.0d;
+
+    /// <summary>
+    /// A closed trip whose smoothed route never strays further from its start than this many
+    /// times its typical fix accuracy (and at least MinTripDistanceMeters) was noise, not a
+    /// journey, and is discarded.
+    /// </summary>
+    public double TripExtentAccuracyFactor { get; set; } = 3.0d;
+
+    /// <summary>
+    /// Process noise for the Kalman smoother: how hard the device is expected to accelerate,
+    /// in m/s². Lower trusts the motion model more and smooths harder. 0.5 held distance
+    /// within a few percent on ±40 m test tracks, for driving and walking alike.
+    /// </summary>
+    public double SmoothingAccelerationMps2 { get; set; } = 0.5d;
 }

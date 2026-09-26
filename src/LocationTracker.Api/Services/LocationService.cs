@@ -25,17 +25,20 @@ public class LocationService : ILocationService
 {
     private readonly AppDbContext _db;
     private readonly ITripDetector _detector;
+    private readonly ITripFinalizer _finalizer;
     private readonly TripDetectionOptions _options;
     private readonly ILogger<LocationService> _logger;
 
     public LocationService(
         AppDbContext db,
         ITripDetector detector,
+        ITripFinalizer finalizer,
         IOptions<TripDetectionOptions> options,
         ILogger<LocationService> logger)
     {
         _db = db;
         _detector = detector;
+        _finalizer = finalizer;
         _options = options.Value;
         _logger = logger;
     }
@@ -48,6 +51,7 @@ public class LocationService : ILocationService
 
         _db.Locations.Add(point);
         _detector.ProcessPoint(ctx, point);
+        ctx.LatestRecordedAtUtc = Max(ctx.LatestRecordedAtUtc, point.RecordedAtUtc);
 
         await PersistAsync(ctx, ct);
 
@@ -81,7 +85,7 @@ public class LocationService : ILocationService
         {
             // Points predating what is already stored would rewrite history the detector has
             // already acted on, so they are refused rather than silently reordering trips.
-            if (ctx.PreviousPoint is not null && point.RecordedAtUtc < ctx.PreviousPoint.RecordedAtUtc)
+            if (ctx.LatestRecordedAtUtc is { } latest && point.RecordedAtUtc < latest)
             {
                 rejected++;
                 continue;
@@ -89,6 +93,7 @@ public class LocationService : ILocationService
 
             _db.Locations.Add(point);
             _detector.ProcessPoint(ctx, point);
+            ctx.LatestRecordedAtUtc = Max(ctx.LatestRecordedAtUtc, point.RecordedAtUtc);
             accepted++;
         }
 
@@ -101,22 +106,51 @@ public class LocationService : ILocationService
     }
 
     /// <summary>
-    /// One query for the last stored fix and one for the open trip. Both are index-backed,
-    /// and loading them once is what lets a 1000-point batch cost the same two reads.
+    /// The newest stored timestamp, the last minute of usable fixes and the open trip. All are
+    /// index-backed on (UserId, RecordedAtUtc), and loading them once is what lets a
+    /// 1000-point batch cost the same few reads as a single ping.
     /// </summary>
     private async Task<DetectionContext> LoadContextAsync(Guid userId, CancellationToken ct)
     {
-        var previous = await _db.Locations
+        var latest = await _db.Locations
             .Where(l => l.UserId == userId)
             .OrderByDescending(l => l.RecordedAtUtc)
+            .Select(l => (DateTime?)l.RecordedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+        var usable = _db.Locations
+            .Where(l => l.UserId == userId)
+            .Where(l => l.AccuracyMeters == null || l.AccuracyMeters <= _options.MaxAccuracyMeters);
+
+        var lastUsable = await usable
+            .OrderByDescending(l => l.RecordedAtUtc)
+            .Select(l => (DateTime?)l.RecordedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        // Tracked, not AsNoTracking: when a trip opens, the detector attaches the fixes that
+        // led up to it, and those updates must be saved.
+        var recent = lastUsable is { } last
+            ? await usable
+                .Where(l => l.RecordedAtUtc >= last - TripDetector.HistoryWindow)
+                .OrderBy(l => l.RecordedAtUtc)
+                .ToListAsync(ct)
+            : new List<Location>();
 
         var activeTrip = await _db.Trips
             .Where(t => t.UserId == userId && t.EndedAtUtc == null)
             .FirstOrDefaultAsync(ct);
 
-        return new DetectionContext { PreviousPoint = previous, ActiveTrip = activeTrip };
+        var ctx = new DetectionContext
+        {
+            PreviousPoint = recent.LastOrDefault(),
+            LatestRecordedAtUtc = latest,
+            ActiveTrip = activeTrip
+        };
+        ctx.RecentPoints.AddRange(recent);
+        return ctx;
     }
+
+    private static DateTime Max(DateTime? a, DateTime b) => a is { } value && value > b ? value : b;
 
     private async Task PersistAsync(DetectionContext ctx, CancellationToken ct)
     {
@@ -158,17 +192,12 @@ public class LocationService : ILocationService
 
         await _db.SaveChangesAsync(ct);
 
-        // Deferred until now because a discarded trip may own points persisted by earlier
-        // requests. Detaching them first keeps the raw history intact — only the derived
-        // rollup goes away.
-        foreach (var trip in ctx.TripsToDiscard.Where(t => t.Id != 0))
-        {
-            await _db.Locations
-                .Where(l => l.TripId == trip.Id)
-                .ExecuteUpdateAsync(s => s.SetProperty(l => l.TripId, (long?)null), ct);
-
-            await _db.Trips.Where(t => t.Id == trip.Id).ExecuteDeleteAsync(ct);
-        }
+        // Only now do the trips have ids and their points rows, so the smoothed figures can be
+        // computed from what is stored. The open trip is refreshed too, so its live distance
+        // is the smoothed one.
+        var touched = ctx.ClosedTrips.ToList();
+        if (ctx.ActiveTrip is not null) touched.Add(ctx.ActiveTrip);
+        await _finalizer.FinalizeAsync(touched, ct);
 
         await transaction.CommitAsync(ct);
     }
@@ -303,11 +332,11 @@ public class LocationService : ILocationService
         var trip = await query.FirstOrDefaultAsync(ct);
         if (trip is null) return null;
 
-        var path = await _db.Locations.AsNoTracking()
-            .Where(l => l.TripId == tripId)
-            .OrderBy(l => l.RecordedAtUtc)
-            .Select(l => new TrackPointResponse(l.Latitude, l.Longitude, l.RecordedAtUtc))
-            .ToListAsync(ct);
+        // The smoothed track rather than the raw fixes: it is what the distance was measured
+        // along, and it does not zig-zag across the road with every coarse fix.
+        var path = (await _finalizer.SmoothedPathAsync(trip, ct))
+            .Select(p => new TrackPointResponse(p.Latitude, p.Longitude, p.RecordedAtUtc))
+            .ToList();
 
         return new TripDetailResponse(ToDto(trip), path);
     }

@@ -87,6 +87,20 @@ struct TrackingView: View {
                 LabeledContent("Last fix", value: tracker.isTracking ? "Waiting for GPS…" : "—")
             }
 
+            if tracker.isTracking {
+                LabeledContent("GPS mode") {
+                    VStack(alignment: .trailing) {
+                        Text(tracker.isStationary ? "Power saving" : "High accuracy")
+                        Text(tracker.isStationary ? "Not moving · check-in every 2 min" : "Moving · \(tracker.motionState.label)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if tracker.isLowPowerMode {
+                            Text("Low Power Mode: fewer uploads").font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+
             LabeledContent("Waiting to send", value: "\(queue.pendingCount)")
 
             if let uploaded = queue.lastUploadAt {

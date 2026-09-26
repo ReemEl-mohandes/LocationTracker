@@ -64,6 +64,10 @@ struct Trip: Decodable, Identifiable, Equatable {
     let isActive: Bool
 }
 
+struct TripDetail: Decodable {
+    let trip: Trip
+}
+
 struct PagedResult<Item: Decodable>: Decodable {
     let items: [Item]
     let page: Int

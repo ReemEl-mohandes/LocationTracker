@@ -68,21 +68,45 @@ per-device token chains or detect replay of a revoked token.
 
 ## Trip detection
 
-`TripDetector` runs on every ingested point, inside the transaction that stores it.
+`TripDetector` runs on every ingested point, inside the transaction that stores it. It
+decides where trips start and end. `TripFinalizer` then measures them.
 
-1. Compare against the previous point: Haversine distance, elapsed time, implied speed.
-2. **Reject noise before it becomes distance.** A segment is discarded if it is shorter than
-   `MinDisplacementMeters` (15 m), if the reported accuracy is worse than the displacement,
-   or if the implied speed exceeds `MaxPlausibleSpeedMps` (70 m/s — a GPS teleport, not a car).
-   Without these gates a stationary phone accumulates kilometres of phantom travel overnight.
-3. Surviving segments at or above `MovingSpeedMps` count as movement. The first one **opens a
-   trip at the previous point**, not the current one, so the leg just travelled is included.
-4. Stillness beyond `IdleTimeoutMinutes` (5) closes the trip **at its last moving point**, so
+Phones often report ±30–100 m positions from Wi-Fi and cell towers rather than GPS. At that
+accuracy, comparing a fix with the one just before it fails in both directions: a real 13 m
+hop at driving speed looks like noise, while a 60 m sideways wobble looks like travel.
+Replaying real trips showed top speeds of 233 km/h on city drives, and summed distances that
+were mostly wobble.
+
+1. **Fixes vaguer than `MaxAccuracyMeters` (100 m)** are stored but take no part in
+   detection.
+2. **Movement is judged on averages.** The mean position over the last 10 seconds is compared
+   with the mean over 20–60 seconds earlier. Averaging n fixes shrinks their noise by √n, and
+   the move must exceed `MovementNoiseFactor` (2) times the combined remaining uncertainty,
+   and at least `MinDisplacementMeters` (15 m), at `MovingSpeedMps` or faster. A GPS fix of
+   ±20 m or better that reports its own (Doppler) speed is trusted directly. With sparse
+   reporting each window holds one fix, which reduces to a point-to-point comparison.
+3. A single hop faster than `MaxPlausibleSpeedMps` (70 m/s) is a teleport and is rejected.
+4. The first movement **opens a trip where the baseline began**, so the stretch just
+   travelled is included.
+5. Stillness beyond `IdleTimeoutMinutes` (5) closes the trip **at its last moving point**, so
    time spent idling at the destination is not counted as travel time.
-5. A silence longer than `GapTimeoutMinutes` (15) closes the trip with `ReportingGap` rather
+6. A silence longer than `GapTimeoutMinutes` (15) closes the trip with `ReportingGap` rather
    than bridging the unknown interval with a straight line.
-6. On close, trips shorter than `MinTripDistanceMeters` (100 m) are deleted and their points
-   detached. Raw history always survives; only the derived rollup goes away.
+
+**Measuring.** After every save, `TripFinalizer` runs the trip's points through a Kalman
+filter with a Rauch–Tung–Striebel backward pass (`TrackSmoother`). Each fix is weighted by its
+reported accuracy against a constant-velocity model (`SmoothingAccelerationMps2`, 0.5). The
+trip's distance and top speed are read off that smoothed track, and the trip detail
+endpoint draws it. On ±40 m test tracks the smoothed distance landed within a few percent of
+the truth, where summing raw hops was off by 2–15×.
+
+On close, a trip is deleted (its points detached, raw history kept) if its smoothed distance
+is under `MinTripDistanceMeters` (100 m), or if it never got further from its start than
+`TripExtentAccuracyFactor` (3) × its typical fix accuracy. That second rule removes the
+wobble of a phone lying still, which can add up to a respectable distance without going
+anywhere. `POST /api/admin/trips/recalculate[?userId=]` (the **Recalculate** button on the
+admin page) re-measures existing trips with the current settings. It does not re-detect
+where they start and end.
 
 `StaleTripSweeper` closes trips whose client stopped reporting entirely. It is **required,
 not optional** — trips are otherwise only ever closed by the arrival of a later point, so a
@@ -171,6 +195,7 @@ explicit `[AllowAnonymous]`, so a new controller cannot ship unprotected by omis
 | GET | `/api/admin/trips/{id}` | **Admin** |
 | GET | `/api/admin/locations/latest` | **Admin** — every user's last fix, for a map |
 | POST | `/api/admin/users/{id}/unlock` | **Admin** — clear a lockout early |
+| POST | `/api/admin/trips/recalculate` | **Admin** — re-measure trips with current smoothing, `?userId` |
 | GET | `/health` | anonymous |
 
 A user requesting another user's trip gets **404**, not 403 — trip ids cannot be probed to
@@ -284,12 +309,31 @@ How it talks to the server:
   Rather than turn validation off, the app accepts exactly one certificate: the one whose
   SHA-256 fingerprint is pinned. A publicly trusted certificate passes normal validation
   and never reaches the pin check.
-- **Uploads.** Fixes are queued on disk and sent every 10 seconds in batches of up to 500.
+- **Uploads.** Fixes are queued on disk and sent in batches of up to 500. With no network
+  they keep queueing and go up the moment connectivity returns. The backlog survives the
+  session expiring and is uploaded after the same user signs in again. Only an explicit
+  sign-out, or a different user signing in, discards it.
   That is a few requests a minute, well inside the per-user write limit. The queue survives
   going offline and app restarts. Fixes worse than 150 m accuracy are dropped on the device.
 - **Background.** The app uses the `location` background mode, with automatic pausing off so
-  the server still sees the stop that ends a trip. It also uses significant-change
-  monitoring, so iOS relaunches the app after it has been terminated.
+  the server still sees the stop that ends a trip. A 150 m geofence (`CLMonitor`) around the
+  last position, plus significant-change and visit monitoring, lets iOS relaunch the app
+  after it has been terminated, swiped away or the phone restarted, as soon as the user
+  moves. If the app stops anyway (for
+  example, swiped away), a local "Location sharing stopped" notification fires within
+  20 minutes. The app keeps pushing it back while it runs.
+- **Notifications.** "Trip recorded" with the server's smoothed distance, duration and top
+  speed when a trip ends. "Location sharing is on/off" with the reason (permission removed,
+  signed out). "Offline" after a minute without internet, and "Back online" with the number
+  of saved points uploaded. Each kind replaces its previous notification instead of piling up.
+- **Icon.** `Resources/AppIcon.png` (1024×1024), wired in through `iconPath` in `xtool.yml`.
+- **Battery.** GPS-level accuracy is used only while moving. After 3 minutes still, the app
+  drops to about 100 m accuracy with a 50 m distance filter, which uses Wi-Fi and cell
+  positioning with GPS mostly off. It then takes one heartbeat fix every 2 minutes, which
+  keeps the user "online" on the admin map and gives the server the stillness points that
+  close a trip. The admin map shows a user as offline 5 minutes after the server last heard
+  from them (by receive time), even if a trip is still open. Uploads are batched every 30 seconds,
+  or every 60 in Low Power Mode.
 
 ---
 

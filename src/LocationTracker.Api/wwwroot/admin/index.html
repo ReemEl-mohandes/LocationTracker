@@ -42,7 +42,11 @@
         </div>
         <p id="detail-meta" class="muted"></p>
         <label class="inline"><input id="show-trail" type="checkbox" checked> Show last 500 points</label>
-        <h3>Trips</h3>
+        <div class="detail-head">
+          <h3>Trips</h3>
+          <button id="recalculate" class="link" title="Recompute distance and speed of this user's trips with the current smoothing">Recalculate</button>
+        </div>
+        <p id="recalculate-status" class="muted"></p>
         <ul id="trip-list" class="trip-list"></ul>
       </div>
     </aside>
