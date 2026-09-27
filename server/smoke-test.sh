@@ -2,7 +2,7 @@
 # End-to-end verification against a running stack. Exercises auth, authorization,
 # trip detection and the brute-force defences.
 #
-#   ./generate-certs.sh && docker compose up -d --build && ./smoke-test.sh
+#   cd server && ./generate-certs.sh && docker compose up -d --build && ./smoke-test.sh
 #
 # -k throughout because the certificate is self-signed. Cookie jars stand in for a
 # browser: the tokens are HttpOnly, so there is nothing to copy into a header.

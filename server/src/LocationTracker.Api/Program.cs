@@ -210,10 +210,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// The admin live map at /admin/. The page itself is public static content; every byte of
-// data it shows comes from /api/admin/*, which is locked to the Admin role.
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// The admin live map (/admin/) is served by nginx from client/wwwroot, not by the API.
 
 app.UseSerilogRequestLogging();
 

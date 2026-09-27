@@ -5,7 +5,7 @@ file, type by type, method by method**, with the reasoning and the "how it shoul
 each. Companion to [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) (platform/deploy) and
 [CLIENT_INTERNALS.md](CLIENT_INTERNALS.md) (the iOS app).
 
-Source: [`src/LocationTracker.Api/`](../src/LocationTracker.Api/). Stack: ASP.NET Core 9, EF Core
+Source: [`server/src/LocationTracker.Api/`](../server/src/LocationTracker.Api/). Stack: ASP.NET Core 9, EF Core
 9, PostgreSQL 16, ASP.NET Core Identity, Serilog, behind nginx (TLS) in Docker Compose.
 
 ---
@@ -26,7 +26,7 @@ HTTPS → nginx (TLS, adds X-Forwarded-*) → Kestrel :8080
   → Controllers / /health
 ```
 
-The order in [`Program.cs`](../src/LocationTracker.Api/Program.cs) is load-bearing and commented
+The order in [`Program.cs`](../server/src/LocationTracker.Api/Program.cs) is load-bearing and commented
 there; the three that must not move are ForwardedHeaders (before the rate limiter, so buckets key
 on the real IP), Authentication → Csrf → Authorization (Csrf needs to know who you are but runs
 before the endpoint), and static files before auth (the `/admin/` HTML is public; its data is not).
@@ -73,7 +73,7 @@ auth scheme, which would silently override JwtBearer. `AddIdentityCore<Applicati
   scheme.
 
 ### 1.6 Authorization — secure by default
-`AddApiAuthorization()` (in [`Security/AuthorizationPolicies.cs`](../src/LocationTracker.Api/Security/AuthorizationPolicies.cs)):
+`AddApiAuthorization()` (in [`Security/AuthorizationPolicies.cs`](../server/src/LocationTracker.Api/Security/AuthorizationPolicies.cs)):
 - Policy **`AdminOnly`** = authenticated + role `Admin`.
 - **Fallback policy = "require authenticated user."** Every endpoint without an explicit
   `[AllowAnonymous]` requires auth. A new controller shipped without an `[Authorize]` is still
@@ -141,7 +141,7 @@ as constraints, not only in C#. Store raw and derived data separately so you can
 
 ## 3. Auth stack
 
-### 3.1 `TokenService` ([`Services/TokenService.cs`](../src/LocationTracker.Api/Services/TokenService.cs))
+### 3.1 `TokenService` ([`Services/TokenService.cs`](../server/src/LocationTracker.Api/Services/TokenService.cs))
 - **`CreateAccessToken(user, roles)`** — builds a JWT with `sub`, `NameIdentifier`, `email`,
   `name`, a random `jti`, the role claims, and a custom **`sstamp`** claim carrying the Identity
   security stamp. Signed HS256 with the configured key; returns token + expiry.
@@ -152,7 +152,7 @@ as constraints, not only in C#. Store raw and derived data separately so you can
 - **`Hash(token)`** — plain SHA-256. Correct here (unlike passwords) because the input is 48 bytes
   of CSPRNG output — nothing to brute-force, no slow KDF needed.
 
-### 3.2 `AuthService` ([`Services/AuthService.cs`](../src/LocationTracker.Api/Services/AuthService.cs))
+### 3.2 `AuthService` ([`Services/AuthService.cs`](../server/src/LocationTracker.Api/Services/AuthService.cs))
 The security-critical service. Records `AuthTokens` / `AuthOutcome`.
 - **`_dummyHash`** — a real Identity hash of a throwaway password, computed once in the
   constructor. On an unknown-email login the code still verifies against it, so response timing
@@ -195,7 +195,7 @@ for cookie clients and exempt bearer clients.
 
 ---
 
-## 4. Location ingestion ([`Services/LocationService.cs`](../src/LocationTracker.Api/Services/LocationService.cs))
+## 4. Location ingestion ([`Services/LocationService.cs`](../server/src/LocationTracker.Api/Services/LocationService.cs))
 
 - **`RecordAsync`** (single point) and **`RecordBatchAsync`** (offline backlog) share the shape:
   load a `DetectionContext`, add each point, run the detector, persist, finalize.
@@ -217,12 +217,12 @@ for cookie clients and exempt bearer clients.
   one-row-per-user query, a correlated subquery over the `(UserId, RecordedAtUtc)` index),
   `GetTripsAsync`, `GetTripDetailAsync` (returns the **smoothed** path, not raw fixes).
 - **`ToEntity`** normalises every inbound `DateTime` through `.ToUtcKind()`
-  ([`DateTimeExtensions`](../src/LocationTracker.Api/Common/DateTimeExtensions.cs)) — Npgsql throws
+  ([`DateTimeExtensions`](../server/src/LocationTracker.Api/Common/DateTimeExtensions.cs)) — Npgsql throws
   if a `timestamptz` value isn't `Kind == Utc`, and model binding produces `Unspecified`.
 
 ---
 
-## 5. Trip detection ([`Services/TripDetector.cs`](../src/LocationTracker.Api/Services/TripDetector.cs))
+## 5. Trip detection ([`Services/TripDetector.cs`](../server/src/LocationTracker.Api/Services/TripDetector.cs))
 
 Runs synchronously per point inside the ingestion transaction.
 
@@ -250,7 +250,7 @@ Distance accumulated here is **provisional** — the finalizer overwrites it.
 
 ## 6. Trip measuring — Kalman smoothing
 
-### 6.1 `TrackSmoother` ([`Common/TrackSmoother.cs`](../src/LocationTracker.Api/Common/TrackSmoother.cs))
+### 6.1 `TrackSmoother` ([`Common/TrackSmoother.cs`](../server/src/LocationTracker.Api/Common/TrackSmoother.cs))
 A **Kalman filter with an RTS (Rauch–Tung–Striebel) backward pass**, per axis, in a local tangent
 plane (metres east/north of the first fix, so every matrix is 2×2 and cheap).
 
@@ -266,7 +266,7 @@ plane (metres east/north of the first fix, so every matrix is 2×2 and cheap).
 Why: summing raw hops counts every ±40 m wobble as travel — the source of the 233 km/h readings.
 On ±40 m test tracks the smoothed distance lands within a few percent; raw summing was off 2–15×.
 
-### 6.2 `TripFinalizer` ([`Services/TripFinalizer.cs`](../src/LocationTracker.Api/Services/TripFinalizer.cs))
+### 6.2 `TripFinalizer` ([`Services/TripFinalizer.cs`](../server/src/LocationTracker.Api/Services/TripFinalizer.cs))
 - **`FinalizeAsync(trips)`** — for each trip: load its usable points (≤ `MaxAccuracyMeters`, up to
   `LastMovingAtUtc`), smooth them, and overwrite `DistanceMeters` and `MaxSpeedMps` from the track.
   For a closed trip, recompute `AverageSpeedMps` and check `IsNoise`.
@@ -280,7 +280,7 @@ This runs inside the ingestion transaction (so figures are always consistent) an
 
 ---
 
-## 7. Rate limiting ([`Security/RateLimitPolicies.cs`](../src/LocationTracker.Api/Security/RateLimitPolicies.cs))
+## 7. Rate limiting ([`Security/RateLimitPolicies.cs`](../server/src/LocationTracker.Api/Security/RateLimitPolicies.cs))
 
 Four partitioned limiters, all keyed on the **real** client IP (recovered by ForwardedHeaders):
 - **`login`** — sliding window, 5/min per IP. Credential stuffing spans many accounts, so per-IP
@@ -310,7 +310,7 @@ unless marked `[AllowAnonymous]`.
 
 ---
 
-## 9. Background service ([`Services/StaleTripSweeper.cs`](../src/LocationTracker.Api/Services/StaleTripSweeper.cs))
+## 9. Background service ([`Services/StaleTripSweeper.cs`](../server/src/LocationTracker.Api/Services/StaleTripSweeper.cs))
 
 A hosted `BackgroundService` on a `PeriodicTimer` (`SweepIntervalSeconds`, 60 s). Each tick, in a
 fresh DI scope, it finds trips with no activity past `GapTimeoutMinutes` and closes them
@@ -321,7 +321,7 @@ host.
 
 ---
 
-## 10. Configuration surface ([`TripDetectionOptions`](../src/LocationTracker.Api/Common/TripDetectionOptions.cs))
+## 10. Configuration surface ([`TripDetectionOptions`](../server/src/LocationTracker.Api/Common/TripDetectionOptions.cs))
 
 Bound from the `TripDetection` config section (env vars or `appsettings.json`), tunable without a
 rebuild:

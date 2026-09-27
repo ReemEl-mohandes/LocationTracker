@@ -6,7 +6,7 @@ Written for: you, as the engineer who owns this code. This document walks the en
 companion to [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md); that one explains the platform and
 build/sign/deploy, this one explains the code.
 
-Source: [`ios/Sources/LocationTrackerClient/`](../ios/Sources/LocationTrackerClient/).
+Source: [`client/ios/Sources/LocationTrackerClient/`](../client/ios/Sources/LocationTrackerClient/).
 
 ---
 
@@ -584,7 +584,7 @@ When iOS relaunches the app in the background (significant-change, geofence exit
 the delegate callback, not the UI.
 
 ### 13.8 Info.plist keys that unlock these APIs
-None of the above works without the matching declarations in [`ios/Info.plist`](../ios/Info.plist):
+None of the above works without the matching declarations in [`client/ios/Info.plist`](../client/ios/Info.plist):
 
 - `UIBackgroundModes = [location, voip]` — background delivery and the boot relaunch.
 - `NSLocationWhenInUseUsageDescription`, `NSLocationAlwaysAndWhenInUseUsageDescription` — required,

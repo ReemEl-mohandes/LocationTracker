@@ -76,7 +76,7 @@ header automatically.
 Needs the .NET 9 SDK + `dotnet-ef`:
 ```bash
 dotnet tool install --global dotnet-ef            # once
-cd src/LocationTracker.Api
+cd server/src/LocationTracker.Api
 dotnet ef migrations add <DescriptiveName>        # after changing entities
 ```
 Migrations apply automatically at API startup (`db.Database.MigrateAsync()` in `Program.cs`), so
@@ -122,7 +122,7 @@ wsl$ xtool setup            # verifies the toolchain + SDK
 
 ### 2.5 Project layout (already in the repo)
 ```
-ios/
+client/ios/
 ├── Package.swift          # one library product = the app; Swift 5 language mode
 ├── xtool.yml              # bundleID, infoPath, iconPath
 ├── Info.plist            # background modes, permission strings, ATS
@@ -134,20 +134,20 @@ ios/
 
 ### 2.6 Build the app
 ```bash
-wsl$ cd /mnt/c/dev/LocationTracker/ios && ./package.sh
+wsl$ cd /mnt/c/dev/LocationTracker/client/ios && ./package.sh
 # runs: xtool dev build  →  python3 mkipa.py  →  copies LocationTrackerClient.ipa to the Desktop
 ```
 Or from PowerShell in one line:
 ```powershell
-PS> wsl -d Ubuntu -- bash -lc 'cd /mnt/c/dev/LocationTracker/ios && ./package.sh'
+PS> wsl -d Ubuntu -- bash -lc 'cd /mnt/c/dev/LocationTracker/client/ios && ./package.sh'
 ```
 Clean build ≈ 1 min; incremental ≈ 10–20 s. **Always the login shell (`-lc`).**
 
 ### 2.7 Editing settings vs code
-- **Bundle ID** → `ios/xtool.yml`
-- **Background modes / permission strings / ATS** → `ios/Info.plist`
-- **Icon** → replace `ios/Resources/AppIcon.png` (1024×1024)
-- **Timers/thresholds/server URL/pinned certs** → `ios/Sources/LocationTrackerClient/AppConfig.swift`
+- **Bundle ID** → `client/ios/xtool.yml`
+- **Background modes / permission strings / ATS** → `client/ios/Info.plist`
+- **Icon** → replace `client/ios/Resources/AppIcon.png` (1024×1024)
+- **Timers/thresholds/server URL/pinned certs** → `client/ios/Sources/LocationTrackerClient/App/AppConfig.swift`
 
 ---
 
@@ -217,7 +217,7 @@ The live server: `reem-server`, `t3.micro`, Elastic IP `34.199.20.93`, in `us-ea
 Copy the repo up (never `.env`, never certs — they're generated on the box):
 ```bash
 # from the repo root on Windows/WSL:
-git ls-files -co --exclude-standard | grep -v '^ios/' | tar -czf - -T - \
+git ls-files -co --exclude-standard | grep -v '^client/ios/' | tar -czf - -T - \
   | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'mkdir -p ~/LocationTracker && tar -xzf - -C ~/LocationTracker'
 ```
 Then on the server:
@@ -231,7 +231,7 @@ Swagger off, and issues a cert naming the public IP. Add that cert's fingerprint
 
 ### 4.4 Redeploy code later
 ```bash
-git ls-files -co --exclude-standard | grep -v '^ios/' | tar -czf - -T - \
+git ls-files -co --exclude-standard | grep -v '^client/ios/' | tar -czf - -T - \
   | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'tar -xzf - -C ~/LocationTracker'
 ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'cd ~/LocationTracker && sudo docker compose up -d --build'
 ```

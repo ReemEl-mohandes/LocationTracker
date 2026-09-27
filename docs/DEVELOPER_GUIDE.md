@@ -6,8 +6,8 @@ part yourself. It explains the whole system, the exact background-execution beha
 an iPhone, and how to run and deploy the server.
 
 Everything here matches the code in this repository as of the current commit. Numbers (timers,
-thresholds) are the real values from [`AppConfig.swift`](../ios/Sources/LocationTrackerClient/AppConfig.swift)
-and [`TripDetectionOptions.cs`](../src/LocationTracker.Api/Common/TripDetectionOptions.cs).
+thresholds) are the real values from [`AppConfig.swift`](../client/ios/Sources/LocationTrackerClient/App/AppConfig.swift)
+and [`TripDetectionOptions.cs`](../server/src/LocationTracker.Api/Common/TripDetectionOptions.cs).
 
 ---
 
@@ -110,7 +110,7 @@ iOS watches a circle (this app uses a **150 m** radius around the last known pos
 phone **leaves** the circle, iOS **relaunches the app in the background** — this survives app
 termination **and phone reboot**. This is the strongest relaunch lever available to a normal
 app. It needs the user to physically move out of the circle. It is what
-[`LocationTracker.swift`](../ios/Sources/LocationTrackerClient/LocationTracker.swift)
+[`LocationTracker.swift`](../client/ios/Sources/LocationTrackerClient/Controller/LocationTracker.swift)
 re-centres on each fix (`placeWakeFenceIfNeeded`). **Suppressed after force-quit** on most iOS
 versions, honoured after a reboot.
 
@@ -129,7 +129,7 @@ Apple's documentation states an app declaring the `voip` background mode is *"re
 background immediately after system boot."* This is the **only** mechanism that can relaunch an
 app after a reboot **without the user moving**. It is a legacy behaviour from the old VoIP push
 era. Current builds include it (`UIBackgroundModes` in
-[`Info.plist`](../ios/Info.plist) contains `voip`). **Whether a given modern iOS version
+[`Info.plist`](../client/ios/Info.plist) contains `voip`). **Whether a given modern iOS version
 still honours it must be confirmed on the device** — Apple has weakened it over the years. It
 costs nothing to include for a sideloaded app.
 
@@ -216,7 +216,7 @@ reboot (a charger-connected Shortcut automation reopens the app within seconds �
 
 ## 5. How the iOS app works internally (file by file)
 
-All Swift files live in [`ios/Sources/LocationTrackerClient/`](../ios/Sources/LocationTrackerClient/).
+All Swift files live in [`client/ios/Sources/LocationTrackerClient/`](../client/ios/Sources/LocationTrackerClient/).
 It is a SwiftUI app, one screen for sign-in and one for status.
 
 ### `LocationTrackerClientApp.swift` — entry point and wiring
@@ -295,14 +295,14 @@ ASP.NET Core 9, one Web API project. Full API and security details are in the ma
 ASP.NET Core Identity, JWT access token (15 min) + rotating refresh token (7 days), both
 delivered as HttpOnly cookies, with a CSRF double-submit check and per-IP rate limits.
 
-### Trip detection ([`TripDetector.cs`](../src/LocationTracker.Api/Services/TripDetector.cs))
+### Trip detection ([`TripDetector.cs`](../server/src/LocationTracker.Api/Services/TripDetector.cs))
 Runs on every ingested point. Because phones often report ±30–100 m Wi-Fi/cell positions,
 movement is judged by **averaging** the last 10 s of fixes against the average from 20–60 s
 earlier (noise shrinks by √n), not by comparing single points. A move must beat
 `MovementNoiseFactor` (2×) the combined accuracy. Trips open where the baseline began, close on
 5 min idle or a 15 min reporting gap.
 
-### Trip measuring ([`TripFinalizer.cs`](../src/LocationTracker.Api/Services/TripFinalizer.cs) + [`TrackSmoother.cs`](../src/LocationTracker.Api/Common/TrackSmoother.cs))
+### Trip measuring ([`TripFinalizer.cs`](../server/src/LocationTracker.Api/Services/TripFinalizer.cs) + [`TrackSmoother.cs`](../server/src/LocationTracker.Api/Common/TrackSmoother.cs))
 Summing raw fix-to-fix hops counts noise as distance (this is why you saw 233 km/h). Instead, a
 **Kalman filter with an RTS smoother** estimates the true path, weighting each fix by its
 accuracy; distance and top speed are read off the smoothed track. On ±40 m test data this lands
@@ -312,7 +312,7 @@ within a few percent of truth. `POST /api/admin/trips/recalculate` re-runs it ov
 ### Stale-trip sweeper
 A background service closes trips whose phone went silent, so one is never left open forever.
 
-### Admin page ([`wwwroot/admin/`](../src/LocationTracker.Api/wwwroot/admin/))
+### Admin page ([`wwwroot/admin/`](../client/wwwroot/admin/))
 Static Leaflet map, polls `/api/admin/locations/latest` every 5 s. A user is **online** if the
 server received a point within the last 5 minutes (measured by receive time), else **offline**.
 
@@ -329,7 +329,7 @@ You build iOS apps here **without a Mac**, using **xtool** inside **WSL (Ubuntu)
 
 ### Project shape (an xtool SwiftPM package, not an Xcode project)
 ```
-ios/
+client/ios/
 ├── Package.swift          # one library product = the app; Swift 5 language mode
 ├── xtool.yml              # bundleID, infoPath, iconPath
 ├── Info.plist            # background modes, permission strings, ATS
@@ -342,7 +342,7 @@ ios/
 ### The edit → build loop
 From WSL, always a **login shell** (so swiftly's PATH is loaded):
 ```bash
-wsl -d Ubuntu -- bash -lc 'cd /mnt/c/dev/LocationTracker/ios && ./package.sh'
+wsl -d Ubuntu -- bash -lc 'cd /mnt/c/dev/LocationTracker/client/ios && ./package.sh'
 ```
 `package.sh` runs `xtool dev build`, then `mkipa.py`, and copies
 `LocationTrackerClient.ipa` to the Windows Desktop. A clean build is ~1 min; incremental ~10–20 s.
@@ -438,7 +438,7 @@ Swagger off, and makes a cert naming the public IP.
 
 ### 9.3 Redeploying code
 ```bash
-git ls-files -co --exclude-standard | grep -v '^ios/' | tar -czf - -T - \
+git ls-files -co --exclude-standard | grep -v '^client/ios/' | tar -czf - -T - \
   | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'tar -xzf - -C ~/LocationTracker'
 ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 \
   'cd ~/LocationTracker && sudo docker compose up -d --build'

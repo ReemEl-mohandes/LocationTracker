@@ -1,3 +1,8 @@
+# Pinned so running from server/ keeps the same containers and, crucially, the same
+# locationtracker_pgdata volume as before the client/server split. Without it Compose
+# would name the project after this folder ("server") and start an empty database.
+name: locationtracker
+
 services:
   db:
     image: postgres:16-alpine
@@ -59,6 +64,8 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      # The admin web page lives with the other client code; nginx serves it at /admin/.
+      - ../client/wwwroot:/usr/share/nginx/html:ro
     depends_on:
       - api
     networks: [backend]

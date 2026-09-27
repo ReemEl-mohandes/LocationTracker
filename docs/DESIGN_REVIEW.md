@@ -69,14 +69,16 @@ Each finding has an ID, what's wrong, why it matters, and a recommendation.
 - **Fixed:** added `**/nginx/certs/*.{crt,key,pfx}` rules. `server/.env` was already ignored.
 - **Recommendation:** after any folder move, re-run `git check-ignore` on every secret path.
 
-**DR-2 · The admin page will disappear on the next deploy.**
-- The admin page moved from `server/src/LocationTracker.Api/wwwroot/` to `client/wwwroot/`.
-  The API serves it with `UseStaticFiles()` from its own `wwwroot`, and the Dockerfile only copies
-  the API project folder. On the next build, **`/admin/` returns 404**. It still works on EC2
-  today only because the old image is running.
-- **Recommendation (pick one):** move it back under the API project, **or** have nginx serve
-  `client/wwwroot` directly (mount it into the nginx container and add a `location /admin/`
-  block). The second keeps the client/server split you wanted.
+**DR-2 · The admin page would have disappeared on the next deploy. ✅ Fixed**
+- The admin page moved from inside the API project to `client/wwwroot/`, but the API served it
+  with `UseStaticFiles()` from its own `wwwroot`, so the next image build would have returned 404
+  for `/admin/`.
+- **Fixed:** nginx now serves it. `docker-compose.yml` mounts `../client/wwwroot` into the nginx
+  container, `nginx.conf` has `location /admin/`, and the API's static-file middleware was
+  removed. This keeps the client/server split.
+- **Also fixed:** `docker-compose.yml` pins `name: locationtracker`. Running Compose from
+  `server/` would otherwise name the project `server` and start with a new, **empty** database
+  volume instead of `locationtracker_pgdata`, on EC2 as well as locally.
 
 **DR-3 · No database backups.**
 - All accounts, points and trips live in one Postgres volume on one EC2 disk. A failed instance,
@@ -100,21 +102,18 @@ Each finding has an ID, what's wrong, why it matters, and a recommendation.
 - **Recommendation:** add `POST /api/auth/change-password`, then rotate the admin password. Turn
   on root MFA and create an IAM admin user.
 
-**DR-7 · The reorganisation broke paths.**
-- `smoke-test.sh` (repo root) sources `./.env`, which now lives at `server/.env`, so it loses the
-  admin credentials.
-- `README.md` and every file in `docs/` link to `ios/…` and `src/…`, and those links are now dead.
-- The documented redeploy command filters `grep -v '^ios/'`, which no longer matches.
-- The PDFs in `docs/` are copies of the Markdown and will go stale.
-- **Recommendation:** move `smoke-test.sh` into `server/` (or point it at `server/.env`), then
-  update the README/docs paths and the deploy command in one pass. Treat the Markdown as the
-  source and regenerate the PDFs, or drop them.
+**DR-7 · The reorganisation broke paths. ✅ Fixed**
+- `smoke-test.sh` moved into `server/`, next to the `.env` it reads.
+- `README.md` and every file in `docs/` now point to `client/…` and `server/…`, including the
+  Swift files' new MVC subfolders. All relative links resolve.
+- The redeploy command now sends committed code only (`git archive HEAD server client/wwwroot`)
+  and runs Compose from `server/`. The README documents a one-time move of `.env` and
+  `nginx/certs/` into `server/` on an instance deployed before the split.
+- **Still open:** the PDFs in `docs/` are copies of the old Markdown. Regenerate them from the
+  Markdown, or drop them.
 
-**DR-8 · Nearly all recent work is uncommitted.**
-- Everything since `01e9d65` is local only: the MVC refactor, the Core package and its tests,
-  the endpoint tests, the specs, the docs and the reorganisation. It exists on one PC.
-- **Recommendation:** after fixing DR-2 and DR-7, commit the reorganisation as its own commit
-  (with `git mv` history if possible), then commit the refactor.
+**DR-8 · Recent work was uncommitted. ✅ Fixed**
+- The reorganisation and refactor were committed and pushed (`f42ff6f`), followed by these fixes.
 
 ### Medium
 

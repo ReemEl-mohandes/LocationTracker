@@ -11,7 +11,12 @@ Stack: ASP.NET Core 9 · ASP.NET Core Identity · EF Core 9 · PostgreSQL 16 · 
 
 ## Running it
 
+The repo has two halves: `server/` (API, Postgres, nginx, deploy scripts) and `client/`
+(the iOS app in `client/ios/`, the admin web page in `client/wwwroot/`). Everything
+server-side runs from `server/`:
+
 ```bash
+cd server
 cp .env.example .env        # then edit every value
 ./generate-certs.sh         # self-signed cert for nginx, once
 docker compose up -d --build
@@ -231,6 +236,7 @@ same Docker Compose stack, behind an Elastic IP (`34.199.20.93`). Its security g
 First-time setup on a fresh instance, after copying the repo to it:
 
 ```bash
+cd ~/LocationTracker/server
 PUBLIC_IP=<elastic ip> ./deploy/ec2-setup.sh   # Docker, swap, new .env secrets, certificate
 sudo docker compose up -d --build
 ```
@@ -240,13 +246,27 @@ sudo docker compose up -d --build
 The certificate names the public IP, and its fingerprint must be listed in the iOS app's
 `AppConfig.pinnedCertificateSHA256`.
 
-Redeploying code from this machine (the server's `.env` and certificates are left alone):
+Redeploying code from this machine. Only committed code is sent (`git archive`), and only
+the two parts the server needs: `server/` and the admin page in `client/wwwroot/`. The
+server's `.env` and certificates are gitignored, so they are never overwritten:
 
 ```bash
-git ls-files -co --exclude-standard | grep -v '^ios/' | tar -czf - -T - \
-  | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'tar -xzf - -C ~/LocationTracker'
-ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'cd ~/LocationTracker && sudo docker compose up -d --build'
+git archive HEAD server client/wwwroot \
+  | ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'tar -xf - -C ~/LocationTracker'
+ssh -i ~/.ssh/reem-key.pem ubuntu@34.199.20.93 'cd ~/LocationTracker/server && sudo docker compose up -d --build'
 ```
+
+**One-time migration for a server deployed before the `client/`/`server/` split.** The
+instance has `.env` and `nginx/certs/` at the top of `~/LocationTracker`. Move them into
+`server/` once, before the first redeploy with the new layout:
+
+```bash
+cd ~/LocationTracker && mkdir -p server/nginx
+mv .env server/.env && mv nginx/certs server/nginx/certs
+```
+
+`docker-compose.yml` pins the project name to `locationtracker`, so the existing containers
+and the `locationtracker_pgdata` volume (the database) are reused, not recreated empty.
 
 A t3.micro in standard credit mode is capped at about 10% CPU until it has earned credits,
 which makes the .NET build crawl. Switch it to `unlimited` for the build and back to
@@ -263,7 +283,7 @@ refreshed every 5 seconds: green means on a trip, blue means seen in the last 5 
 grey means older than that. Click a user to see their last 500 points and their trips. Click a
 trip to draw its path.
 
-The page is static content in `wwwroot/admin/`, served by the API itself. It is same-origin,
+The page is static content in `client/wwwroot/admin/`, served by nginx. It is same-origin,
 so it uses the normal cookie session, and every piece of data it shows comes from
 `/api/admin/*`. Leaflet is bundled under `vendor/`. Only the map tiles come from
 OpenStreetMap.
@@ -272,12 +292,12 @@ OpenStreetMap.
 
 ## iOS client
 
-`ios/` is a SwiftUI app (iOS 17+) that signs a user in, records GPS in the foreground and
+`client/ios/` is a SwiftUI app (iOS 17+) that signs a user in, records GPS in the foreground and
 background, and uploads to `/api/locations/batch`. Trips are then detected by the server as
 usual. It is an [xtool](https://github.com/xtool-org/xtool) SwiftPM project, so it builds on
 Linux or WSL without a Mac.
 
-1. Check `ios/Sources/LocationTrackerClient/AppConfig.swift`:
+1. Check `client/ios/Sources/LocationTrackerClient/App/AppConfig.swift`:
    - `defaultServerURL` is this PC's LAN address as the phone sees it (`ipconfig`). It can
      also be edited on the sign-in screen.
    - `pinnedCertificateSHA256` must match the current certificate:
@@ -285,7 +305,7 @@ Linux or WSL without a Mac.
      time `generate-certs.sh` is re-run.
 2. Build from WSL:
    ```bash
-   cd /mnt/c/dev/LocationTracker/ios && ./package.sh
+   cd /mnt/c/dev/LocationTracker/client/ios && ./package.sh
    ```
    This runs `xtool dev build` and wraps the result into an unsigned
    `LocationTrackerClient.ipa` on the Windows Desktop. `mkipa.py` stands in for
@@ -340,6 +360,7 @@ How it talks to the server:
 ## Development without Docker
 
 ```bash
+cd server
 docker compose up -d db          # Postgres only; uncomment its ports first
 cd src/LocationTracker.Api
 dotnet run                        # reads appsettings.Development.json
