@@ -1,5 +1,6 @@
-import CoreLocation
+import LocationTrackerCore
 import SwiftUI
+import UIKit
 
 struct TrackingView: View {
     let profile: UserProfile
@@ -70,18 +71,18 @@ struct TrackingView: View {
 
     private var statusSection: some View {
         Section("Status") {
-            if let location = tracker.lastLocation {
+            if let fix = tracker.lastFix {
                 LabeledContent("Last fix") {
                     VStack(alignment: .trailing) {
-                        Text(String(format: "%.5f, %.5f", location.coordinate.latitude, location.coordinate.longitude))
+                        Text(String(format: "%.5f, %.5f", fix.latitude, fix.longitude))
                             .monospacedDigit()
-                        Text("±\(Int(location.horizontalAccuracy)) m · \(location.timestamp.formatted(date: .omitted, time: .standard))")
+                        Text("±\(Int(fix.accuracyMeters)) m · \(fix.timestamp.formatted(date: .omitted, time: .standard))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                if location.speed >= 0 {
-                    LabeledContent("Speed", value: String(format: "%.1f km/h", location.speed * 3.6))
+                if fix.speed >= 0 {
+                    LabeledContent("Speed", value: String(format: "%.1f km/h", fix.speed * 3.6))
                 }
             } else {
                 LabeledContent("Last fix", value: tracker.isTracking ? "Waiting for GPS…" : "—")

@@ -20,7 +20,14 @@ final class SessionStore: ObservableObject {
     /// Runs whenever a user is signed in, including on restore at launch.
     var onSignedIn: ((UserProfile) -> Void)?
 
-    init() {
+    // Injected abstractions (DIP). Defaults are the production concretes, so existing callers
+    // (`SessionStore()`) are unaffected; tests pass fakes.
+    private let auth: AuthAPI
+    private let tokens: TokenStoring
+
+    init(auth: AuthAPI = APIClient.shared, tokens: TokenStoring = KeychainTokenStore()) {
+        self.auth = auth
+        self.tokens = tokens
         expiryObserver = NotificationCenter.default.addObserver(
             forName: .sessionExpired, object: nil, queue: .main
         ) { [weak self] _ in
@@ -34,12 +41,12 @@ final class SessionStore: ObservableObject {
     }
 
     func restore() async {
-        guard TokenStore.load() != nil else {
+        guard tokens.load() != nil else {
             state = .signedOut
             return
         }
         do {
-            let profile = try await APIClient.shared.me()
+            let profile = try await auth.me()
             signedIn(profile)
         } catch APIError.unauthorized {
             endSession(explicit: false)
@@ -56,17 +63,17 @@ final class SessionStore: ObservableObject {
     }
 
     func login(email: String, password: String) async throws {
-        let profile = try await APIClient.shared.login(email: email, password: password)
+        let profile = try await auth.login(email: email, password: password)
         signedIn(profile)
     }
 
     func register(email: String, password: String, displayName: String) async throws {
-        let profile = try await APIClient.shared.register(email: email, password: password, displayName: displayName)
+        let profile = try await auth.register(email: email, password: password, displayName: displayName)
         signedIn(profile)
     }
 
     func logout() async {
-        await APIClient.shared.logout()
+        await auth.logout()
         endSession(explicit: true)
     }
 
@@ -78,7 +85,7 @@ final class SessionStore: ObservableObject {
 
     private func endSession(explicit: Bool) {
         guard state != .signedOut else { return }
-        TokenStore.clear()
+        tokens.clear()
         Self.cachedProfile = nil
         onSignedOut?(explicit)
         state = .signedOut

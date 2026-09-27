@@ -25,6 +25,10 @@ final class UploadQueue: ObservableObject {
     /// overwrite the backlog.
     private var diskLoaded = true
 
+    // Injected abstractions (DIP). Defaults are the production concretes.
+    private let api: LocationAPI
+    private let tokens: TokenStoring
+
     private static let ownerKey = "queueOwner"
     private static let activeTripKey = "lastActiveTripId"
     private let pathMonitor = NWPathMonitor()
@@ -41,7 +45,9 @@ final class UploadQueue: ObservableObject {
         return dir.appendingPathComponent("pending-locations.json")
     }()
 
-    init() {
+    init(api: LocationAPI = APIClient.shared, tokens: TokenStoring = KeychainTokenStore()) {
+        self.api = api
+        self.tokens = tokens
         if let saved = loadFromDisk() {
             pending = saved
         } else {
@@ -83,7 +89,7 @@ final class UploadQueue: ObservableObject {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.offlineNoticeDelay))
             guard let self, self.offlineSince == since, !self.wasOnline,
-                  TokenStore.load() != nil else { return }
+                  self.tokens.load() != nil else { return }
             self.offlineNotified = true
             Notifier.offline(pending: self.pending.count)
         }
@@ -93,7 +99,7 @@ final class UploadQueue: ObservableObject {
     /// smoothed figures for the summary. A 404 means the server discarded it as noise.
     private func tripEnded(_ id: Int64) {
         Task {
-            if let trip = try? await APIClient.shared.myTrip(id: id), !trip.isActive {
+            if let trip = try? await api.myTrip(id: id), !trip.isActive {
                 Notifier.tripRecorded(trip)
             }
         }
@@ -152,7 +158,7 @@ final class UploadQueue: ObservableObject {
     }
 
     func flush() async {
-        guard !isFlushing, !pending.isEmpty, TokenStore.load() != nil else { return }
+        guard !isFlushing, !pending.isEmpty, tokens.load() != nil else { return }
         if let notBefore, notBefore > Date() { return }
 
         isFlushing = true
@@ -170,7 +176,7 @@ final class UploadQueue: ObservableObject {
             let batch = Array(pending.prefix(AppConfig.maxBatchSize))
 
             do {
-                let result = try await APIClient.shared.uploadBatch(batch)
+                let result = try await api.uploadBatch(batch)
                 dropSent(batch.count)
                 if let previous = activeTripId, previous != result.activeTripId {
                     tripEnded(previous)

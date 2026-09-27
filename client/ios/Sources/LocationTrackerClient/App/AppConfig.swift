@@ -36,7 +36,9 @@ enum AppConfig {
     /// While stationary no fixes arrive on their own, so one is requested this often. It
     /// keeps the admin map showing the user as online, and it gives the server the stillness
     /// points it uses to close a trip.
-    static let heartbeatInterval: TimeInterval = 2 * 60
+    /// Presence heartbeat: while running (even stationary) send one location this often so the
+    /// admin map shows the user online. Not movement tracking — just "I am here".
+    static let heartbeatInterval: TimeInterval = 30
 
     /// No movement for this long switches GPS to low-power positioning.
     static let stationaryAfter: TimeInterval = 3 * 60
