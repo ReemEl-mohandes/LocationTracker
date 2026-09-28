@@ -1,4 +1,5 @@
 import Foundation
+import LocationTrackerCore
 import Network
 import UIKit
 
@@ -177,7 +178,7 @@ final class UploadQueue: ObservableObject {
 
             do {
                 let result = try await api.uploadBatch(batch)
-                dropSent(batch.count)
+                removeSent(batch)
                 if let previous = activeTripId, previous != result.activeTripId {
                     tripEnded(previous)
                 }
@@ -195,7 +196,7 @@ final class UploadQueue: ObservableObject {
             } catch APIError.server(let status, let message) where (400..<500).contains(status) {
                 // The server will reject this batch no matter how often it is resent; keeping
                 // it would block every point queued behind it.
-                dropSent(batch.count)
+                removeSent(batch)
                 lastError = "Server rejected \(batch.count) points: \(message ?? "HTTP \(status)")"
             } catch {
                 // Offline, timed out, 5xx or signed out: keep the points and try again later.
@@ -205,8 +206,10 @@ final class UploadQueue: ObservableObject {
         }
     }
 
-    private func dropSent(_ count: Int) {
-        pending.removeFirst(min(count, pending.count))
+    /// Removes exactly the points in `batch`. The rule lives in the tested Core model
+    /// (UploadPolicy.removeSent) — see its comment for why "the first N" is wrong.
+    private func removeSent(_ batch: [LocationPoint]) {
+        pending = UploadPolicy.removeSent(batch, from: pending)
         persist()
     }
 

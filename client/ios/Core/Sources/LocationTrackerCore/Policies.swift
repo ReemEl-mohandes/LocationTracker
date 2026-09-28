@@ -130,6 +130,28 @@ public enum UploadPolicy {
         }
     }
 
+    /// The queue after a successful upload of `batch`: exactly the sent points removed, however
+    /// the queue changed while the batch was in flight (cap trimming, the post-reboot backlog
+    /// merged in front, a sign-out clear). Removing "the first N" instead would delete unsent
+    /// points and re-send sent ones. Each sent point removes one matching point wherever it now
+    /// sits; sent points that are already gone are simply not found. Everything else keeps its
+    /// order.
+    public static func removeSent<T: Hashable>(_ batch: [T], from pending: [T]) -> [T] {
+        if pending.starts(with: batch) { return Array(pending.dropFirst(batch.count)) }
+        var remaining: [T: Int] = [:]
+        for item in batch { remaining[item, default: 0] += 1 }
+        var kept: [T] = []
+        kept.reserveCapacity(pending.count)
+        for item in pending {
+            if let count = remaining[item], count > 0 {
+                remaining[item] = count - 1
+            } else {
+                kept.append(item)
+            }
+        }
+        return kept
+    }
+
     /// Merge an on-disk backlog with in-memory points after a reboot unlock (F10.11):
     /// sorted by time, de-duplicated by value, preserving order.
     public static func merge(disk: [LocationPoint], memory: [LocationPoint]) -> [LocationPoint] {

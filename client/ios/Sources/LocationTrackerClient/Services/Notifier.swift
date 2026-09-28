@@ -49,10 +49,12 @@ enum Notifier {
     /// Posted once per trip, however many times the app sees it end.
     static func tripRecorded(_ trip: Trip) {
         let defaults = UserDefaults.standard
-        var notified = Set(defaults.stringArray(forKey: notifiedTripsKey) ?? [])
+        // An ordered list, oldest first, so trimming to 200 drops the oldest ids. (A Set has no
+        // order, so trimming it could drop the trip just announced and announce it again.)
+        var notified = defaults.stringArray(forKey: notifiedTripsKey) ?? []
         let key = String(trip.id)
         guard !notified.contains(key) else { return }
-        notified.insert(key)
+        notified.append(key)
         defaults.set(Array(notified.suffix(200)), forKey: notifiedTripsKey)
 
         let distance = trip.distanceMeters >= 1000

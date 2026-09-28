@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Entities (value types, frozen per spec/services.md)
 
 /// One GPS fix, the unit uploaded to the server.
-public struct LocationPoint: Codable, Equatable, Sendable {
+public struct LocationPoint: Codable, Hashable, Sendable {
     public let latitude: Double
     public let longitude: Double
     public let accuracyMeters: Double?

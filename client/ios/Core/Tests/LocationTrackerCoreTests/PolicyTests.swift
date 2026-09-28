@@ -109,6 +109,27 @@ final class UploadPolicyTests: XCTestCase {
     }
     func testDecideRetryableKeeps() { XCTAssertEqual(UploadPolicy.decide(.retryable), .stopKeeping) }
 
+    // Review fix: remove exactly the sent points, not "the first N".
+    func testRemoveSentCommonCase() {
+        let pending = (0..<10).map(pt)
+        XCTAssertEqual(UploadPolicy.removeSent(Array(pending.prefix(4)), from: pending), Array(pending.dropFirst(4)))
+    }
+    func testRemoveSentWhenBacklogMergedInFront() {
+        // Sent 5...7; meanwhile the post-reboot backlog (1...3, older, unsent) was merged in front.
+        let sent = [pt(5), pt(6), pt(7)]
+        let pendingAfterMerge = [pt(1), pt(2), pt(3), pt(5), pt(6), pt(7), pt(8)]
+        XCTAssertEqual(UploadPolicy.removeSent(sent, from: pendingAfterMerge), [pt(1), pt(2), pt(3), pt(8)])
+    }
+    func testRemoveSentWhenCapTrimmedSomeSentPoints() {
+        // Sent 0...3; the cap already dropped 0 and 1 while the batch was in flight.
+        let sent = [pt(0), pt(1), pt(2), pt(3)]
+        XCTAssertEqual(UploadPolicy.removeSent(sent, from: [pt(2), pt(3), pt(4), pt(5)]), [pt(4), pt(5)])
+    }
+    func testRemoveSentAfterClearKeepsNewPoints() {
+        // Sign-out cleared the queue mid-flight, then new points arrived: none may be removed.
+        XCTAssertEqual(UploadPolicy.removeSent([pt(0), pt(1)], from: [pt(50), pt(51)]), [pt(50), pt(51)])
+    }
+
     func testMergeSortsAndDedups() {
         let disk = [pt(1), pt(3)]
         let memory = [pt(2), pt(3)]   // pt(3) duplicated

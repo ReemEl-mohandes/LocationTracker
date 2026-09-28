@@ -42,6 +42,11 @@ final class SessionStore: ObservableObject {
 
     func restore() async {
         guard tokens.load() != nil else {
+            // After a reboot, before the first unlock, the Keychain can't be read, so a missing
+            // token proves nothing. Stay in `.restoring`; the app calls restoreIfPending() when
+            // the phone is unlocked. Signing out here would strand the UI on the sign-in screen
+            // even though the saved session is valid.
+            if !tokens.isUnlockedSinceBoot { return }
             state = .signedOut
             return
         }
@@ -60,6 +65,12 @@ final class SessionStore: ObservableObject {
                 state = .signedOut
             }
         }
+    }
+
+    /// Retries restore() if it was deferred because the phone was still locked after a reboot.
+    func restoreIfPending() async {
+        guard state == .restoring else { return }
+        await restore()
     }
 
     func login(email: String, password: String) async throws {

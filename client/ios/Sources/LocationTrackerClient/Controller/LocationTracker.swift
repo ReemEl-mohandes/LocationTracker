@@ -187,6 +187,16 @@ final class LocationTracker: NSObject, ObservableObject, LocationProviderDelegat
         isStationary = stationary
         provider.apply(AccuracyPolicy.desiredMode(
             stationary: stationary, motion: motionState, lowPower: isLowPower, config: config))
+
+        // Applying a mode restores the distance filter. If a heartbeat is still waiting for its
+        // fix, that would silently cancel it: a still phone never moves far enough to deliver
+        // one, and the next attempt only comes after the timeout, leaving the user shown
+        // offline. Re-open the filter so the pending heartbeat fix still arrives. The two places
+        // that end a heartbeat (fix received, timeout) clear heartbeatRequestedAt first, so they
+        // do restore the filter.
+        if heartbeatRequestedAt != nil {
+            provider.requestSingleFix()
+        }
     }
 
     // MARK: - Wake fence

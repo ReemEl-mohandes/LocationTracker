@@ -35,10 +35,11 @@ struct LocationTrackerClientApp: App {
         // reloads do nothing once their state is loaded.
         NotificationCenter.default.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
-        ) { [weak tracker, weak queue] _ in
+        ) { [weak tracker, weak queue, weak session] _ in
             MainActor.assumeIsolated {
                 tracker?.reloadAfterUnlock()
                 Task { await queue?.reloadAfterUnlock() }
+                Task { await session?.restoreIfPending() }
             }
         }
 

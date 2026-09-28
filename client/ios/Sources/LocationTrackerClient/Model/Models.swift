@@ -30,7 +30,7 @@ struct UserProfile: Codable, Equatable {
 }
 
 /// One fix, in the shape POST /api/locations/batch expects.
-struct LocationPoint: Codable, Equatable {
+struct LocationPoint: Codable, Hashable {
     let latitude: Double
     let longitude: Double
     let accuracyMeters: Double?
